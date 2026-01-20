@@ -1,0 +1,55 @@
+version: "3.8"
+
+services:
+  agent:
+    image: portainer/agent:lts
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
+    networks:
+      - portainer-agent
+    deploy:
+      mode: global
+      placement:
+        constraints:
+          - node.platform.os == linux
+
+  portainer:
+    image: portainer/portainer-ce:lts
+    command: -H tcp://tasks.agent:9001 --tlsskipverify
+    volumes:
+      - portainer-data:/data
+    networks:
+      - portainer-agent
+      - traefik-public
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+          # Optional: pin to polaris explicitly
+          # - node.hostname == polaris
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.portainer.rule=Host(`portainer.kluhan.dev`)
+        - traefik.http.routers.portainer.entrypoints=websecure
+        - traefik.http.routers.portainer.tls=true
+        - traefik.http.routers.portainer.tls.certresolver=letsencrypt
+        - traefik.http.services.portainer.loadbalancer.server.port=9000
+
+networks:
+  traefik-public:
+    external: true
+
+  portainer-agent:
+    driver: overlay
+    attachable: true
+
+volumes:
+  portainer-data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr=192.168.100.75,nfsvers=4,rw
+      device: ":/mnt/aegis/docker-volumes/portainer-data"
